@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mojitext_v2/auth/register_screen.dart';
-import 'package:mojitext_v2/auth/reset_password_screen.dart'; // <-- Importamos la nueva pantalla
-
-// ignore: unused_import
-import 'package:mojitext_v2/modules/home.dart';
+import 'package:mojitext_v2/auth/reset_password_screen.dart';
+import 'package:mojitext_v2/services/database_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -28,15 +26,29 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _login() async {
     if (_formKey.currentState!.validate()) {
       setState(() => _isLoading = true);
-      
-      // Simular llamada a API
-      await Future.delayed(const Duration(seconds: 2));
-      
-      // Navegar al home después de login exitoso
-      // ignore: use_build_context_synchronously
-      Navigator.pushReplacementNamed(context, '/home');
-      
-      setState(() => _isLoading = false);
+
+      try {
+       final user = await DatabaseService.instance.verifyUser(_emailController.text, _passwordController.text);
+        
+        if (user != null && user['password'] == _passwordController.text) {
+          if (!mounted) return;
+          Navigator.pushReplacementNamed(context, '/home');
+        } else {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Credenciales incorrectas')),
+          );
+        }
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al iniciar sesión: $e')),
+        );
+      } finally {
+  if (mounted) {
+    setState(() => _isLoading = false);
+  }
+}
     }
   }
 
@@ -85,7 +97,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           controller: _emailController,
                           decoration: InputDecoration(
                             labelText: 'Correo electrónico',
-                            prefixIcon: Icon(Icons.email),
+                            prefixIcon: const Icon(Icons.email),
                             filled: true,
                             fillColor: Colors.lightBlue[50],
                             border: OutlineInputBorder(
@@ -109,7 +121,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           controller: _passwordController,
                           decoration: InputDecoration(
                             labelText: 'Contraseña',
-                            prefixIcon: Icon(Icons.lock),
+                            prefixIcon: const Icon(Icons.lock),
                             filled: true,
                             fillColor: Colors.lightBlue[50],
                             border: OutlineInputBorder(

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:mojitext_v2/services/database_service.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -14,6 +15,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   bool _isLoading = false;
+  final DatabaseService _dbService = DatabaseService.instance;
 
   @override
   void dispose() {
@@ -34,14 +36,25 @@ class _RegisterScreenState extends State<RegisterScreen> {
       }
 
       setState(() => _isLoading = true);
-      
-      // Simular registro
-      await Future.delayed(const Duration(seconds: 2));
-      
-      // Navegar al home después de registro exitoso
-      Navigator.pushReplacementNamed(context, '/home');
-      
-      setState(() => _isLoading = false);
+
+      try {
+        await _dbService.createUser(
+          _emailController.text,
+          _nameController.text,
+          _passwordController.text, // En producción, usa hashing!
+        );
+
+        if (!mounted) return;
+        Navigator.pushReplacementNamed(context, '/home');
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al registrar: $e')),
+        );
+      } finally {
+        if (!mounted) return;
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -50,7 +63,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Crear Cuenta'),
-        backgroundColor: Colors.redAccent, // Color de fondo del AppBar
+        backgroundColor: Colors.redAccent,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
@@ -59,11 +72,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
           child: Column(
             children: [
               const SizedBox(height: 30),
-              // Icono para identificar el formulario de registro
               const Icon(
                 Icons.app_registration,
                 size: 100,
-                color: Colors.orange, // Color del icono
+                color: Colors.orange,
               ),
               const SizedBox(height: 20),
               TextFormField(
@@ -168,7 +180,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 child: ElevatedButton(
                   onPressed: _isLoading ? null : _register,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.orange, // Color del botón
+                    backgroundColor: Colors.orange,
                     padding: const EdgeInsets.symmetric(vertical: 15),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),

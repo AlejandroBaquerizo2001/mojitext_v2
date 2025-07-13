@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_sound/flutter_sound.dart';
+import 'package:path_provider/path_provider.dart';
+import 'dart:io';
 
 class VoiceModule extends StatefulWidget {
   const VoiceModule({super.key});
@@ -11,6 +14,10 @@ class _VoiceModuleState extends State<VoiceModule> with SingleTickerProviderStat
   late AnimationController _controller;
   late Animation<double> _scaleAnimation;
   bool _recording = false;
+  String _emotion = 'No detectada';
+  final FlutterSoundRecorder _recorder = FlutterSoundRecorder();
+  bool _isRecorderReady = false;
+  String? _audioPath;
 
   @override
   void initState() {
@@ -22,6 +29,14 @@ class _VoiceModuleState extends State<VoiceModule> with SingleTickerProviderStat
       upperBound: 0.1,
     );
     _scaleAnimation = Tween<double>(begin: 1.0, end: 0.95).animate(_controller);
+    _initRecorder();
+  }
+
+  Future<void> _initRecorder() async {
+    await _recorder.openRecorder();
+    setState(() {
+      _isRecorderReady = true;
+    });
   }
 
   void _onTapDown(_) => _controller.forward();
@@ -30,11 +45,64 @@ class _VoiceModuleState extends State<VoiceModule> with SingleTickerProviderStat
   @override
   void dispose() {
     _controller.dispose();
+    _recorder.closeRecorder();
     super.dispose();
   }
 
-  void _toggleRecording() {
-    setState(() => _recording = !_recording);
+  Future<String> analyzeVoice(File audioFile) async {
+    try {
+      // Leer el archivo como bytes
+      final audioBytes = await audioFile.readAsBytes();
+      
+      // Simulación basada en tamaño del archivo (como en tu ejemplo Python)
+      if (audioBytes.length < 10000) {
+        return "Tranquilo";
+      } else if (audioBytes.length < 50000) {
+        return "Estresado";
+      } else {
+        return "Enojado";
+      }
+    } catch (e) {
+      return 'Error: ${e.toString()}';
+    }
+  }
+
+  Future<void> _toggleRecording() async {
+    if (!_isRecorderReady) {
+      await _initRecorder();
+      return;
+    }
+
+    try {
+      if (_recording) {
+        await _recorder.stopRecorder();
+        
+        if (_audioPath != null) {
+          final emotion = await analyzeVoice(File(_audioPath!));
+          setState(() {
+            _recording = false;
+            _emotion = emotion;
+          });
+        }
+      } else {
+        final tempDir = await getTemporaryDirectory();
+        _audioPath = '${tempDir.path}/audio_temp.aac';
+        await _recorder.startRecorder(
+          toFile: _audioPath!,
+          codec: Codec.aacADTS,
+        );
+        
+        setState(() {
+          _recording = true;
+          _emotion = 'Analizando...';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _recording = false;
+        _emotion = 'Error: ${e.toString()}';
+      });
+    }
   }
 
   @override
@@ -43,7 +111,6 @@ class _VoiceModuleState extends State<VoiceModule> with SingleTickerProviderStat
       backgroundColor: const Color(0xFFE6F1EB),
       body: Stack(
         children: [
-          // Fondo decorativo tipo hojas suaves
           Positioned.fill(
             child: Opacity(
               opacity: 0.07,
@@ -58,7 +125,6 @@ class _VoiceModuleState extends State<VoiceModule> with SingleTickerProviderStat
               ),
             ),
           ),
-          // Contenido principal
           SingleChildScrollView(
             child: Padding(
               padding: const EdgeInsets.all(24),
@@ -78,7 +144,6 @@ class _VoiceModuleState extends State<VoiceModule> with SingleTickerProviderStat
                   ),
                   const SizedBox(height: 30),
 
-                  // Botón con animación
                   GestureDetector(
                     onTapDown: _onTapDown,
                     onTapUp: (d) {
@@ -119,11 +184,11 @@ class _VoiceModuleState extends State<VoiceModule> with SingleTickerProviderStat
                   const SizedBox(height: 40),
                   ClipRRect(
                     borderRadius: BorderRadius.circular(16),
-                    child: const LinearProgressIndicator(
-                      value: 0.7,
+                    child: LinearProgressIndicator(
+                      value: _recording ? null : 0.7,
                       minHeight: 10,
-                      color: Color(0xFF4E944F),
-                      backgroundColor: Color(0xFFDFF0D8),
+                      color: const Color(0xFF4E944F),
+                      backgroundColor: const Color(0xFFDFF0D8),
                     ),
                   ),
                   const SizedBox(height: 20),
@@ -144,9 +209,9 @@ class _VoiceModuleState extends State<VoiceModule> with SingleTickerProviderStat
                     ),
                   ),
                   const SizedBox(height: 10),
-                  const Chip(
-                    label: Text('Neutral', style: TextStyle(color: Colors.white)),
-                    backgroundColor: Color(0xFF90A955),
+                  Chip(
+                    label: Text(_emotion, style: const TextStyle(color: Colors.white)),
+                    backgroundColor: const Color(0xFF90A955),
                     elevation: 4,
                     shadowColor: Colors.black26,
                   ),

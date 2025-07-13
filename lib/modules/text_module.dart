@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:mojitext_v2/services/api_service.dart';
 
 class TextModule extends StatefulWidget {
   const TextModule({super.key});
@@ -10,6 +12,8 @@ class TextModule extends StatefulWidget {
 class _TextModuleState extends State<TextModule> with SingleTickerProviderStateMixin {
   final TextEditingController _textController = TextEditingController();
   bool _isAnalyzing = false;
+  String? _dominantEmotion;
+  Map<String, dynamic> _emotionResults = {};
   late AnimationController _animationController;
   late Animation<double> _scaleAnimation;
 
@@ -28,19 +32,67 @@ class _TextModuleState extends State<TextModule> with SingleTickerProviderStateM
   void _onTapDown(_) => _animationController.forward();
   void _onTapUp(_) => _animationController.reverse();
 
+  Future<void> _analyzeText() async {
+    if (_textController.text.isEmpty) return;
+    
+    setState(() {
+      _isAnalyzing = true;
+      _dominantEmotion = null;
+      _emotionResults = {};
+    });
+    
+    try {
+      final result = await ApiService.analyzeText(_textController.text)
+          .timeout(const Duration(seconds: 15));
+      
+      setState(() {
+        _dominantEmotion = result['dominant_emotion'];
+        _emotionResults = Map<String, dynamic>.from(result['emotions']);
+      });
+    } on TimeoutException {
+      setState(() {
+        _dominantEmotion = 'Tiempo de espera agotado';
+      });
+    } catch (e) {
+      setState(() {
+        _dominantEmotion = 'Error en el análisis';
+      });
+    } finally {
+      setState(() => _isAnalyzing = false);
+    }
+  }
+
   @override
   void dispose() {
     _animationController.dispose();
+    _textController.dispose();
     super.dispose();
+  }
+
+  Color _getEmotionColor(String emotion) {
+    switch (emotion.toLowerCase()) {
+      case 'feliz': return Colors.green;
+      case 'triste': return Colors.blue;
+      case 'enojado': return Colors.red;
+      case 'sorpresa': return Colors.amber;
+      case 'miedo': return Colors.purple;
+      case 'tranquilo': return Colors.lightBlue;
+      case 'neutral': return Colors.grey;
+      default: return Colors.orange;
+    }
+  }
+
+  String _capitalize(String text) {
+    if (text.isEmpty) return text;
+    return text[0].toUpperCase() + text.substring(1);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFFFF3E0), // Fondo cálido
+      backgroundColor: const Color(0xFFFFF3E0),
       body: Stack(
         children: [
-          // Fondo tipo calor/lava
           Positioned.fill(
             child: Opacity(
               opacity: 0.07,
@@ -55,7 +107,6 @@ class _TextModuleState extends State<TextModule> with SingleTickerProviderStateM
               ),
             ),
           ),
-          // Contenido principal
           SingleChildScrollView(
             child: Padding(
               padding: const EdgeInsets.all(24),
@@ -84,12 +135,9 @@ class _TextModuleState extends State<TextModule> with SingleTickerProviderStateM
                   const SizedBox(height: 20),
                   GestureDetector(
                     onTapDown: _onTapDown,
-                    onTapUp: (d) {
+                    onTapUp: (d) async {
                       _onTapUp(d);
-                      setState(() => _isAnalyzing = true);
-                      Future.delayed(const Duration(seconds: 2), () {
-                        setState(() => _isAnalyzing = false);
-                      });
+                      await _analyzeText();
                     },
                     child: ScaleTransition(
                       scale: _scaleAnimation,
@@ -143,17 +191,43 @@ class _TextModuleState extends State<TextModule> with SingleTickerProviderStateM
                           ),
                         ),
                         const SizedBox(height: 15),
-                        Wrap(
-                          spacing: 10,
-                          runSpacing: 10,
-                          children: [
-                            _buildEmotionChip('Feliz', 85, Colors.deepOrange),
-                            _buildEmotionChip('Tristeza', 15, Colors.brown),
-                            _buildEmotionChip('Enojo', 65, Colors.redAccent),
-                            _buildEmotionChip('Sorpresa', 30, Colors.amber),
-                            _buildEmotionChip('Miedo', 10, Colors.purple),
-                          ],
-                        ),
+                        if (_dominantEmotion != null)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 15),
+                            child: Text(
+                              "Emoción dominante: ${_capitalize(_dominantEmotion!)}",
+                              style: const TextStyle(
+                                fontSize: 16,
+                                color: Color(0xFF5D4037),
+                              ),
+                            ),
+                          ),
+                        if (_emotionResults.isNotEmpty)
+                          Wrap(
+                            spacing: 10,
+                            runSpacing: 10,
+                            children: _emotionResults.entries.map((entry) {
+                              return Chip(
+                                labelPadding: const EdgeInsets.symmetric(horizontal: 8),
+                                backgroundColor: _getEmotionColor(entry.key).withOpacity(0.2),
+                                label: Text(
+                                  '${_capitalize(entry.key)}: ${entry.value}%',
+                                  style: TextStyle(
+                                    color: _getEmotionColor(entry.key).withOpacity(0.8),
+                                  ),
+                                ),
+                                avatar: CircleAvatar(
+                                  backgroundColor: _getEmotionColor(entry.key),
+                                  child: Text(
+                                    '${entry.value.toString().split('.')[0]}%',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.white),
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          ),
                       ],
                     ),
                 ],
@@ -161,21 +235,6 @@ class _TextModuleState extends State<TextModule> with SingleTickerProviderStateM
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildEmotionChip(String emotion, int percent, Color color) {
-    return Chip(
-      labelPadding: const EdgeInsets.symmetric(horizontal: 8),
-      backgroundColor: color.withOpacity(0.2),
-      label: Text('$emotion: $percent%'),
-      avatar: CircleAvatar(
-        backgroundColor: color,
-        child: Text(
-          percent.toString(),
-          style: const TextStyle(fontSize: 12, color: Colors.white),
-        ),
       ),
     );
   }
